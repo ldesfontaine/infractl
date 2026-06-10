@@ -1,0 +1,198 @@
+#!/usr/bin/env bash
+# labctl — VM de lab jetables (libvirt/KVM, mode system)
+# Les disques vivent dans /var/lib/libvirt/images (pool canonique, accessible à libvirt-qemu).
+set -euo pipefail
+
+# --- Configuration -----------------------------------------------------------
+POOL_DIR="/var/lib/libvirt/images"
+BASE_URL="https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-genericcloud-amd64.qcow2"
+BASE_IMAGE="$POOL_DIR/debian-12-genericcloud-amd64.qcow2"
+DEFAULT_NAME="infra-lab"
+RAM_MB=2048
+VCPUS=2
+DISK_SIZE="20G"
+ROOT_PASSWORD="lab"
+VIRSH=(sudo virsh --connect qemu:///system)
+SSH_OPTS=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR)
+# UserKnownHostsFile=/dev/null : chaque destroy/create régénère la clé d'hôte de la VM ;
+# sans ça, ssh bloquerait sur un conflit known_hosts à chaque cycle. Réservé au lab.
+
+# --- Helpers -----------------------------------------------------------------
+die() { echo "ERREUR : $*" >&2; exit 1; }
+info() { echo "→ $*"; }
+
+ssh_pubkey() {
+  local home="$HOME" k
+  if [[ $EUID -eq 0 && -n ${SUDO_USER:-} ]]; then
+    home=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+  fi
+  for k in "$home/.ssh/id_ed25519.pub" "$home/.ssh/id_rsa.pub"; do
+    [[ -r "$k" ]] && { cat "$k"; return 0; }
+  done
+  die "aucune clé publique trouvée — génère-la : ssh-keygen -t ed25519"
+}
+
+ensure_base() {
+  [[ -f "$BASE_IMAGE" ]] && return 0
+  info "Téléchargement de l'image de base vers $POOL_DIR"
+  sudo wget -q --show-progress -O "${BASE_IMAGE}.part" "$BASE_URL"
+  sudo mv "${BASE_IMAGE}.part" "$BASE_IMAGE"
+}
+
+domain_exists() { "${VIRSH[@]}" dominfo "$1" &>/dev/null; }
+
+get_ip() {
+  "${VIRSH[@]}" domifaddr "$1" 2>/dev/null \
+    | awk '/ipv4/ {sub(/\/.*/, "", $4); print $4; exit}'
+}
+
+wait_ip() {
+  local name="$1" ip="" i
+  for i in $(seq 1 60); do
+    ip=$(get_ip "$name")
+    [[ -n "$ip" ]] && { echo "$ip"; return 0; }
+    sleep 2
+  done
+  return 1
+}
+
+wait_ssh() {
+  local ip="$1" i
+  for i in $(seq 1 45); do
+    ssh "${SSH_OPTS[@]}" -o ConnectTimeout=2 "root@$ip" true 2>/dev/null && return 0
+    sleep 2
+  done
+  return 1
+}
+
+# --- Commandes ---------------------------------------------------------------
+cmd_create() {
+  local name="${1:-$DEFAULT_NAME}"
+  domain_exists "$name" && die "'$name' existe déjà (labctl destroy $name d'abord)"
+  ensure_base
+
+  local disk="$POOL_DIR/$name.qcow2"
+  [[ -e "$disk" ]] && { info "Overlay orphelin trouvé, suppression"; sudo rm -f "$disk"; }
+  sudo qemu-img create -f qcow2 -F qcow2 -b "$BASE_IMAGE" "$disk" "$DISK_SIZE" >/dev/null
+
+  local ud
+  ud=$(mktemp)
+  cat > "$ud" <<EOF
+#cloud-config
+hostname: $name
+disable_root: false
+ssh_pwauth: true
+chpasswd:
+  expire: false
+  users:
+    - name: root
+      password: $ROOT_PASSWORD
+      type: text
+users:
+  - name: root
+    lock_passwd: false
+    ssh_authorized_keys:
+      - $(ssh_pubkey)
+EOF
+
+  info "Création de '$name' ($RAM_MB Mo / $VCPUS vCPU / $DISK_SIZE)"
+  sudo virt-install --name "$name" --memory "$RAM_MB" --vcpus "$VCPUS" \
+    --disk "$disk" --import --osinfo debian12 \
+    --cloud-init "user-data=$ud" --network network=default \
+    --noautoconsole >/dev/null
+  rm -f "$ud"
+
+  info "Attente de l'IP…"
+  local ip
+  ip=$(wait_ip "$name") || die "pas d'IP après 120 s — labctl console $name"
+  info "IP : $ip — attente de SSH…"
+  wait_ssh "$ip" || die "SSH injoignable — labctl console $name (root/$ROOT_PASSWORD)"
+
+  info "Attente de la fin de cloud-init…"
+  timeout 120 ssh "${SSH_OPTS[@]}" "root@$ip" \
+    'cloud-init status --wait >/dev/null 2>&1' || true
+
+  "${VIRSH[@]}" snapshot-create-as "$name" clean \
+    --description "Debian fraîche, cloud-init terminé" >/dev/null
+  echo
+  echo "✔ '$name' prête — IP $ip — snapshot 'clean' posé"
+  echo "  labctl ssh $name | labctl revert $name | labctl destroy $name"
+}
+
+cmd_destroy() {
+  local name="${1:-$DEFAULT_NAME}"
+  domain_exists "$name" || die "'$name' n'existe pas"
+  "${VIRSH[@]}" destroy "$name" &>/dev/null || true
+  "${VIRSH[@]}" undefine "$name" --snapshots-metadata --remove-all-storage
+  echo "✔ '$name' détruite (overlay supprimé, image de base conservée)"
+}
+
+cmd_revert() {
+  local name="${1:-$DEFAULT_NAME}" snap="${2:-clean}"
+  "${VIRSH[@]}" snapshot-revert "$name" "$snap"
+  echo "✔ '$name' revenue au snapshot '$snap' — IP : $(get_ip "$name")"
+}
+
+cmd_snap() {
+  local name="${1:-$DEFAULT_NAME}" snap="${2:?usage: labctl snap <vm> <nom-du-snapshot>}"
+  "${VIRSH[@]}" snapshot-create-as "$name" "$snap" >/dev/null
+  echo "✔ snapshot '$snap' posé sur '$name'"
+}
+
+cmd_snaps() { "${VIRSH[@]}" snapshot-list "${1:-$DEFAULT_NAME}"; }
+
+cmd_ip() {
+  local ip
+  ip=$(get_ip "${1:-$DEFAULT_NAME}")
+  [[ -n "$ip" ]] && echo "$ip" || die "pas d'IP (VM éteinte ?)"
+}
+
+cmd_ssh() {
+  local name="${1:-$DEFAULT_NAME}"
+  [[ $# -gt 0 ]] && shift
+  local ip
+  ip=$(wait_ip "$name") || die "pas d'IP — la VM tourne-t-elle ?"
+  exec ssh "${SSH_OPTS[@]}" "root@$ip" "$@"
+}
+
+cmd_console() {
+  echo "(sortie de la console : Ctrl+])"
+  "${VIRSH[@]}" console "${1:-$DEFAULT_NAME}"
+}
+
+cmd_list() { "${VIRSH[@]}" list --all; }
+
+usage() {
+  cat <<USAGE
+labctl — VM de lab jetables (libvirt)
+
+  labctl create  [vm]            crée la VM + snapshot 'clean' (cloud-init terminé)
+  labctl destroy [vm]            détruit VM + overlay (image de base conservée)
+  labctl revert  [vm] [snap]     revient au snapshot (défaut : clean) — ~10 s
+  labctl snap    [vm] <snap>     pose un snapshot nommé
+  labctl snaps   [vm]            liste les snapshots
+  labctl ip      [vm]            affiche l'IP
+  labctl ssh     [vm] [cmd...]   ssh root@vm (options lab)
+  labctl console [vm]            console série (secours — Ctrl+] pour sortir)
+  labctl list                    liste les domaines
+
+  VM par défaut : $DEFAULT_NAME
+USAGE
+  exit 1
+}
+
+# --- Dispatch ----------------------------------------------------------------
+cmd="${1:-}"
+[[ $# -gt 0 ]] && shift
+case "$cmd" in
+  create)  cmd_create  "$@" ;;
+  destroy) cmd_destroy "$@" ;;
+  revert)  cmd_revert  "$@" ;;
+  snap)    cmd_snap    "$@" ;;
+  snaps)   cmd_snaps   "$@" ;;
+  ip)      cmd_ip      "$@" ;;
+  ssh)     cmd_ssh     "$@" ;;
+  console) cmd_console "$@" ;;
+  list)    cmd_list    "$@" ;;
+  *)       usage ;;
+esac
