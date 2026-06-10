@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
-# labctl — VM de lab jetables (libvirt/KVM, mode system)
-# Les disques vivent dans /var/lib/libvirt/images (pool canonique, accessible à libvirt-qemu).
+# labctl v2 — VM de lab jetables (libvirt/KVM, mode system)
+#
+# v2 : la seed NoCloud est générée ici (cloud-localds) et attachée en disque
+# VIRTIO readonly. Pourquoi : `virt-install --cloud-init` attache la seed en
+# CD-ROM SATA invisible au moment où cloud-init la cherche (course de modules
+# au boot) et injecte un marqueur DMI "ds=nocloud" sans données — cloud-init
+# se valide alors À VIDE et n'applique rien. Voir docs/adr/0006.
 set -euo pipefail
 
 # --- Configuration -----------------------------------------------------------
@@ -59,25 +64,20 @@ wait_ip() {
 wait_ssh() {
   local ip="$1" i
   for i in $(seq 1 45); do
-    ssh "${SSH_OPTS[@]}" -o ConnectTimeout=2 "root@$ip" true 2>/dev/null && return 0
+    ssh "${SSH_OPTS[@]}" -o BatchMode=yes -o ConnectTimeout=2 \
+      "root@$ip" true 2>/dev/null && return 0
     sleep 2
   done
   return 1
 }
 
-# --- Commandes ---------------------------------------------------------------
-cmd_create() {
-  local name="${1:-$DEFAULT_NAME}"
-  domain_exists "$name" && die "'$name' existe déjà (labctl destroy $name d'abord)"
-  ensure_base
+make_seed() {
+  local name="$1" seed="$2" tmpd
+  command -v cloud-localds >/dev/null \
+    || die "cloud-localds manquant : sudo apt install cloud-image-utils"
+  tmpd=$(mktemp -d)
 
-  local disk="$POOL_DIR/$name.qcow2"
-  [[ -e "$disk" ]] && { info "Overlay orphelin trouvé, suppression"; sudo rm -f "$disk"; }
-  sudo qemu-img create -f qcow2 -F qcow2 -b "$BASE_IMAGE" "$disk" "$DISK_SIZE" >/dev/null
-
-  local ud
-  ud=$(mktemp)
-  cat > "$ud" <<EOF
+  cat > "$tmpd/user-data" <<EOF
 #cloud-config
 hostname: $name
 disable_root: false
@@ -95,12 +95,37 @@ users:
       - $(ssh_pubkey)
 EOF
 
+  cat > "$tmpd/meta-data" <<EOF
+instance-id: $name-$(date +%s)
+local-hostname: $name
+EOF
+
+  cloud-localds "$tmpd/seed.iso" "$tmpd/user-data" "$tmpd/meta-data"
+  sudo mv "$tmpd/seed.iso" "$seed"
+  sudo chmod 644 "$seed"
+  rm -rf "$tmpd"
+}
+
+# --- Commandes ---------------------------------------------------------------
+cmd_create() {
+  local name="${1:-$DEFAULT_NAME}"
+  domain_exists "$name" && die "'$name' existe déjà (labctl destroy $name d'abord)"
+  ensure_base
+
+  local disk="$POOL_DIR/$name.qcow2"
+  local seed="$POOL_DIR/$name-seed.iso"
+  [[ -e "$disk" ]] && { info "Overlay orphelin trouvé, suppression"; sudo rm -f "$disk"; }
+  sudo qemu-img create -f qcow2 -F qcow2 -b "$BASE_IMAGE" "$disk" "$DISK_SIZE" >/dev/null
+
+  info "Génération de la seed cloud-init (instance-id unique)"
+  make_seed "$name" "$seed"
+
   info "Création de '$name' ($RAM_MB Mo / $VCPUS vCPU / $DISK_SIZE)"
   sudo virt-install --name "$name" --memory "$RAM_MB" --vcpus "$VCPUS" \
-    --disk "$disk" --import --osinfo debian12 \
-    --cloud-init "user-data=$ud" --network network=default \
+    --disk "$disk" \
+    --disk "path=$seed,format=raw,readonly=on,bus=virtio" \
+    --import --osinfo debian12 --network network=default \
     --noautoconsole >/dev/null
-  rm -f "$ud"
 
   info "Attente de l'IP…"
   local ip
@@ -124,7 +149,8 @@ cmd_destroy() {
   domain_exists "$name" || die "'$name' n'existe pas"
   "${VIRSH[@]}" destroy "$name" &>/dev/null || true
   "${VIRSH[@]}" undefine "$name" --snapshots-metadata --remove-all-storage
-  echo "✔ '$name' détruite (overlay supprimé, image de base conservée)"
+  sudo rm -f "$POOL_DIR/$name-seed.iso"
+  echo "✔ '$name' détruite (overlay + seed supprimés, image de base conservée)"
 }
 
 cmd_revert() {
@@ -164,10 +190,10 @@ cmd_list() { "${VIRSH[@]}" list --all; }
 
 usage() {
   cat <<USAGE
-labctl — VM de lab jetables (libvirt)
+labctl v2 — VM de lab jetables (libvirt)
 
   labctl create  [vm]            crée la VM + snapshot 'clean' (cloud-init terminé)
-  labctl destroy [vm]            détruit VM + overlay (image de base conservée)
+  labctl destroy [vm]            détruit VM + overlay + seed (image de base conservée)
   labctl revert  [vm] [snap]     revient au snapshot (défaut : clean) — ~10 s
   labctl snap    [vm] <snap>     pose un snapshot nommé
   labctl snaps   [vm]            liste les snapshots
@@ -177,6 +203,7 @@ labctl — VM de lab jetables (libvirt)
   labctl list                    liste les domaines
 
   VM par défaut : $DEFAULT_NAME
+  Prérequis : cloud-image-utils (cloud-localds)
 USAGE
   exit 1
 }
