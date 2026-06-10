@@ -20,3 +20,6 @@ vit sur la machine cible et n'entre JAMAIS dans ce dépôt.
 - Toute décision structurante = un ADR dans docs/adr/.
 - Jamais de trailer `Co-Authored-By` dans les messages de commit.
 - Ne jamais exécuter tools/labctl (sudo + hyperviseur : réservé à l'humain).
+- Accès SSH à la VM de lab autorisé UNIQUEMENT si l'humain fournit l'IP dans sa
+demande (options : StrictHostKeyChecking=no, UserKnownHostsFile=/dev/null).
+- Ne jamais lire, afficher ou copier le contenu de /srv/infra/secrets/.
