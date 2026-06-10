@@ -8,21 +8,33 @@ ANSIBLE_DIR = Path(__file__).resolve().parent / "ansible"
 SITE = ANSIBLE_DIR / "site.yml"
 INVENTORY = ANSIBLE_DIR / "inventory" / "hosts.yml"
 REQUIREMENTS = ANSIBLE_DIR / "requirements.yml"
+# Pas de .resolve() : bin/python d'un venv est un symlink vers le python systeme ;
+# le resoudre sortirait du venv (pipx n'expose pas les binaires des dependances).
+VENV_BIN = Path(sys.executable).parent
 
 
 def _ansible_env():
-    return {**os.environ, "ANSIBLE_CONFIG": str(ANSIBLE_DIR / "ansible.cfg")}
+    # Locale forcee : les locales forwardees par SSH peuvent etre absentes de la
+    # cible (Ansible refuse de demarrer) ; C.UTF-8 existe partout et rend les
+    # sorties deterministes quel que soit l'operateur.
+    return {
+        **os.environ,
+        "ANSIBLE_CONFIG": str(ANSIBLE_DIR / "ansible.cfg"),
+        "LC_ALL": "C.UTF-8",
+        "LANG": "C.UTF-8",
+    }
 
 
 def _ensure_collections():
     return subprocess.run(
-        ["ansible-galaxy", "collection", "install", "-r", str(REQUIREMENTS)],
+        [str(VENV_BIN / "ansible-galaxy"), "collection", "install",
+         "-r", str(REQUIREMENTS)],
         env=_ansible_env(), check=False,
     ).returncode
 
 
 def _run_playbook(tags=None, ask_become_pass=False):
-    cmd = ["ansible-playbook", "-i", str(INVENTORY), str(SITE)]
+    cmd = [str(VENV_BIN / "ansible-playbook"), "-i", str(INVENTORY), str(SITE)]
     if ask_become_pass:
         cmd.append("--ask-become-pass")
     if tags:
