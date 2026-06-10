@@ -1,0 +1,17 @@
+---
+infra_root: /srv/infra
+bind_ip: "{{ ansible_default_ipv4.address }}"
+http_port: 80
+https_port: 443
+
+lab_domain: "lab.{{ domain }}"
+acme_dns_provider: cloudflare
+acme_ca_server: "https://acme-staging-v02.api.letsencrypt.org/directory"
+
+traefik_image: "traefik:v3.7.4"
+socket_proxy_image: "tecnativa/docker-socket-proxy:v0.4.2"
+whoami_image: "traefik/whoami:v1.11.0"
+
+compose_files:
+  - compose.yml
+  - apps/whoami.yml

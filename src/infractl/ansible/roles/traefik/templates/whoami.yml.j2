@@ -1,0 +1,9 @@
+services:
+  whoami:
+    image: {{ whoami_image }}
+    networks: [proxy]
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.whoami.rule=Host(`whoami.{{ lab_domain }}`)
+      - traefik.http.routers.whoami.entrypoints=websecure
+    restart: unless-stopped

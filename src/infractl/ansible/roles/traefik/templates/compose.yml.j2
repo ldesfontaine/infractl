@@ -1,0 +1,32 @@
+services:
+  socket-proxy:
+    image: {{ socket_proxy_image }}
+    environment:
+      CONTAINERS: 1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks: [docker-api]
+    restart: unless-stopped
+
+  traefik:
+    image: {{ traefik_image }}
+    user: "65532:65532"
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    read_only: true
+    depends_on: [socket-proxy]
+    ports:
+      - "${BIND_IP}:${HTTP_PORT}:8080"
+      - "${BIND_IP}:${HTTPS_PORT}:8443"
+    volumes:
+      - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./traefik/dynamic:/etc/traefik/dynamic:ro
+      - ./traefik/acme:/acme
+    env_file:
+      - secrets/cloudflare.env
+    networks: [docker-api, proxy]
+    restart: unless-stopped
+
+networks:
+  docker-api: { internal: true }
+  proxy: {}
