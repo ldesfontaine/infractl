@@ -6,5 +6,7 @@
   vars_files:
     - /srv/infra/config.yml
   roles:
-    - { role: docker,  tags: [docker] }
-    - { role: traefik, tags: [traefik] }
+    - role: docker
+      tags: [docker]
+    - role: traefik
+      tags: [traefik]

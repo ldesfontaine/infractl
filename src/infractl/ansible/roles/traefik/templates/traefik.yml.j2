@@ -26,9 +26,9 @@ certificatesResolvers:
     acme:
       email: "{{ acme_email }}"
       storage: /acme/acme.json
-      caServer: "{{ acme_ca_server }}"
+      caServer: "{{ traefik_acme_ca_server }}"
       dnsChallenge:
-        provider: "{{ acme_dns_provider }}"
+        provider: "{{ traefik_acme_dns_provider }}"
         resolvers: ["1.1.1.1:53"]
 
 log:

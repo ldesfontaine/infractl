@@ -1,6 +1,6 @@
 services:
   socket-proxy:
-    image: {{ socket_proxy_image }}
+    image: {{ traefik_socket_proxy_image }}
     environment:
       CONTAINERS: 1
     volumes:

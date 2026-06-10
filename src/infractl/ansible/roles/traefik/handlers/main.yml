@@ -2,6 +2,6 @@
 - name: Restart traefik
   community.docker.docker_compose_v2:
     project_src: "{{ infra_root }}"
-    files: "{{ compose_files }}"
+    files: "{{ traefik_compose_files }}"
     state: restarted
     services: [traefik]

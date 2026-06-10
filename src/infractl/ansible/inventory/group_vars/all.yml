@@ -1,0 +1,3 @@
+---
+infra_root: /srv/infra
+lab_domain: "lab.{{ domain }}"

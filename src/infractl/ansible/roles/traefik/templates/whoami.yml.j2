@@ -1,6 +1,6 @@
 services:
   whoami:
-    image: {{ whoami_image }}
+    image: {{ traefik_whoami_image }}
     networks: [proxy]
     labels:
       - traefik.enable=true

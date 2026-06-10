@@ -13,23 +13,30 @@
     mode: "{{ item.mode }}"
     owner: "{{ item.owner | default('root') }}"
   loop:
-    - { path: "",                mode: "0755" }
-    - { path: "apps",            mode: "0755" }
-    - { path: "secrets",         mode: "0700" }
-    - { path: "traefik",         mode: "0755" }
-    - { path: "traefik/dynamic", mode: "0755" }
-    - { path: "traefik/acme",    mode: "0700", owner: "65532" }
+    - path: ""
+      mode: "0755"
+    - path: apps
+      mode: "0755"
+    - path: secrets
+      mode: "0700"
+    - path: traefik
+      mode: "0755"
+    - path: traefik/dynamic
+      mode: "0755"
+    - path: traefik/acme
+      mode: "0700"
+      owner: "65532"
 
 - name: Secret Cloudflare déjà posé ?
   ansible.builtin.stat:
     path: "{{ infra_root }}/secrets/cloudflare.env"
-  register: cf_secret
+  register: traefik_cf_secret
 
 - name: Exiger CF_DNS_API_TOKEN au premier déploiement
   ansible.builtin.assert:
     that: lookup('env', 'CF_DNS_API_TOKEN') | length > 0
     fail_msg: "Premier run : export CF_DNS_API_TOKEN=<token> avant infractl deploy"
-  when: not cf_secret.stat.exists
+  when: not traefik_cf_secret.stat.exists
 
 - name: Écrire le secret Cloudflare (jamais écrasé ensuite)
   ansible.builtin.copy:
@@ -37,7 +44,7 @@
     dest: "{{ infra_root }}/secrets/cloudflare.env"
     mode: "0600"
     force: false
-  when: not cf_secret.stat.exists
+  when: not traefik_cf_secret.stat.exists
   no_log: true
 
 - name: Fichiers d'état (compose, env, apps)
@@ -46,9 +53,12 @@
     dest: "{{ infra_root }}/{{ item.dest }}"
     mode: "0644"
   loop:
-    - { src: env.j2,         dest: .env }
-    - { src: compose.yml.j2, dest: compose.yml }
-    - { src: whoami.yml.j2,  dest: apps/whoami.yml }
+    - src: env.j2
+      dest: .env
+    - src: compose.yml.j2
+      dest: compose.yml
+    - src: whoami.yml.j2
+      dest: apps/whoami.yml
 
 - name: Configuration statique Traefik
   ansible.builtin.template:
@@ -60,7 +70,7 @@
 - name: Stack convergée
   community.docker.docker_compose_v2:
     project_src: "{{ infra_root }}"
-    files: "{{ compose_files }}"
+    files: "{{ traefik_compose_files }}"
     state: present
     remove_orphans: true
     wait: true
