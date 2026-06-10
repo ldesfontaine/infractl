@@ -1,0 +1,18 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "infractl"
+version = "0.1.0"
+description = "Socle self-hosted secure-by-default"
+requires-python = ">=3.11"
+dependencies = [
+  "ansible-core>=2.16",
+]
+
+[project.scripts]
+infractl = "infractl.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/infractl"]

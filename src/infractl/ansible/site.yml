@@ -1,0 +1,10 @@
+---
+- name: Socle infractl — convergence
+  hosts: infra
+  become: true
+  gather_facts: true
+  vars_files:
+    - /srv/infra/config.yml
+  roles:
+    - { role: docker,  tags: [docker] }
+    - { role: traefik, tags: [traefik] }
