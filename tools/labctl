@@ -13,9 +13,9 @@ POOL_DIR="/var/lib/libvirt/images"
 BASE_URL="https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-genericcloud-amd64.qcow2"
 BASE_IMAGE="$POOL_DIR/debian-12-genericcloud-amd64.qcow2"
 DEFAULT_NAME="infra-lab"
-RAM_MB=2048
-VCPUS=2
-DISK_SIZE="20G"
+RAM_MB="${LABCTL_RAM:-2048}"
+VCPUS="${LABCTL_VCPUS:-2}"
+DISK_SIZE="${LABCTL_DISK:-20G}"
 ROOT_PASSWORD="lab"
 VIRSH=(sudo virsh --connect qemu:///system)
 SSH_OPTS=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR)
@@ -203,6 +203,8 @@ labctl v2 — VM de lab jetables (libvirt)
   labctl list                    liste les domaines
 
   VM par défaut : $DEFAULT_NAME
+  Dimensionnement : LABCTL_RAM (Mo), LABCTL_VCPUS, LABCTL_DISK
+  (ex. LABCTL_RAM=4096 labctl create gros-lab)
   Prérequis : cloud-image-utils (cloud-localds)
 USAGE
   exit 1
