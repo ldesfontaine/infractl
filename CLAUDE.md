@@ -18,3 +18,4 @@ vit sur la machine cible et n'entre JAMAIS dans ce dépôt.
 - Convention produit : aucun service ne déclare `ports:` sauf traefik.
 - Images Docker épinglées (jamais latest) ; toute MAJ de version = ADR 0005 mis à jour.
 - Toute décision structurante = un ADR dans docs/adr/.
+- Jamais de trailer `Co-Authored-By` dans les messages de commit.
