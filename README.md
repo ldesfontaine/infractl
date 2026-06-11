@@ -22,9 +22,14 @@ arrivent dans les slices suivantes.
 ## Installation (sur la machine cible)
 
 ```bash
-apt-get update && apt-get install -y --no-install-recommends pipx
+apt-get update && apt-get install -y --no-install-recommends git pipx
 pipx install git+https://github.com/ldesfontaine/infractl.git
-mkdir -p /srv/infra && $EDITOR /srv/infra/config.yml   # domain, acme_email
+export PATH="$PATH:/root/.local/bin"
+mkdir -p /srv/infra
+cat > /srv/infra/config.yml <<'EOF'                     # remplacer les deux valeurs
+domain: exemple.com
+acme_email: vous@exemple.com
+EOF
 read -rsp 'CF_DNS_API_TOKEN : ' CF_DNS_API_TOKEN; echo; export CF_DNS_API_TOKEN  # premier deploy uniquement
 infractl deploy
 ```
