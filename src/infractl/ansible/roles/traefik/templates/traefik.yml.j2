@@ -15,6 +15,9 @@ entryPoints:
   websecure:
     address: ":8443"
     http:
+      middlewares:
+        # Ordre significatif. Slice 3 préfixera crowdsec@file ICI, avant authelia.
+        - authelia@file
       tls:
         certResolver: le
         domains:
