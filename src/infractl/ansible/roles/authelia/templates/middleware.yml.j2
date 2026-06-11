@@ -1,0 +1,11 @@
+# Géré par infractl — middleware SSO appliqué à l'entrypoint websecure
+http:
+  middlewares:
+    authelia:
+      forwardAuth:
+        address: "http://authelia:9091/api/authz/forward-auth"
+        authResponseHeaders:
+          - Remote-User
+          - Remote-Groups
+          - Remote-Email
+          - Remote-Name

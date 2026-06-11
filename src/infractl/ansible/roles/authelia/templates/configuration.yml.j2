@@ -1,0 +1,33 @@
+# Géré par infractl — ne pas éditer à la main (rôle authelia)
+server:
+  address: 'tcp://:9091'
+  disable_healthcheck: true
+
+log:
+  level: info
+
+authentication_backend:
+  file:
+    path: /secrets/users.yml
+
+access_control:
+  default_policy: one_factor
+  rules:
+    # Machinerie moteur : sans ce bypass, le portail boucle sur lui-même.
+    - domain: "auth.{{ lab_domain }}"
+      policy: bypass
+    # (brief 2B : les exceptions de /srv/infra/public.yml seront rendues ici)
+
+session:
+  cookies:
+    - domain: "{{ lab_domain }}"
+      authelia_url: "https://auth.{{ lab_domain }}"
+      default_redirection_url: "https://whoami.{{ lab_domain }}"
+
+storage:
+  local:
+    path: /config/db.sqlite3
+
+notifier:
+  filesystem:
+    filename: /config/notification.txt

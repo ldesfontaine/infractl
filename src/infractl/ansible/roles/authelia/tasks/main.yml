@@ -1,0 +1,56 @@
+---
+- name: Arborescence Authelia
+  ansible.builtin.file:
+    path: "{{ infra_root }}/{{ item.path }}"
+    state: directory
+    owner: "{{ authelia_uid }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - path: authelia
+      mode: "0700"
+    - path: secrets/authelia
+      mode: "0500"
+
+- name: Secrets machine Authelia (générés au premier run, jamais réécrits)
+  ansible.builtin.set_fact:
+    authelia_secret_seed: >-
+      {{ lookup('password',
+                infra_root ~ '/secrets/authelia/' ~ item
+                ~ ' length=64 chars=ascii_letters,digits') }}
+  loop: [jwt_secret, session_secret, storage_encryption_key]
+  no_log: true
+
+- name: Permissions des secrets machine
+  ansible.builtin.file:
+    path: "{{ infra_root }}/secrets/authelia/{{ item }}"
+    owner: "{{ authelia_uid }}"
+    mode: "0400"
+  loop: [jwt_secret, session_secret, storage_encryption_key]
+
+- name: users.yml présent ?
+  ansible.builtin.stat:
+    path: "{{ infra_root }}/secrets/authelia/users.yml"
+  register: authelia_users_file
+
+- name: Exiger users.yml (créé par l'opérateur, jamais par le moteur)
+  ansible.builtin.assert:
+    that: authelia_users_file.stat.exists
+    fail_msg: >-
+      /srv/infra/secrets/authelia/users.yml absent.
+      Génère un hash (docker run --rm -it authelia/authelia:4.39.20
+      authelia crypto hash generate argon2) puis crée le fichier —
+      procédure complète : README, section Authelia.
+
+- name: Configuration Authelia
+  ansible.builtin.template:
+    src: configuration.yml.j2
+    dest: "{{ infra_root }}/authelia/configuration.yml"
+    owner: "{{ authelia_uid }}"
+    mode: "0600"
+  notify: Restart authelia
+
+- name: Middleware forwardAuth (rechargé à chaud par Traefik, ADR 0004)
+  ansible.builtin.template:
+    src: middleware.yml.j2
+    dest: "{{ infra_root }}/traefik/dynamic/authelia.yml"
+    mode: "0644"
