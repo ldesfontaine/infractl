@@ -8,6 +8,34 @@ services:
     networks: [docker-api]
     restart: unless-stopped
 
+  authelia:
+    image: {{ authelia_image }}
+    user: "{{ authelia_uid }}:{{ authelia_uid }}"
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    read_only: true
+    environment:
+      AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET_FILE: /secrets/jwt_secret
+      AUTHELIA_SESSION_SECRET_FILE: /secrets/session_secret
+      AUTHELIA_STORAGE_ENCRYPTION_KEY_FILE: /secrets/storage_encryption_key
+    volumes:
+      - ./authelia:/config
+      - ./secrets/authelia:/secrets:ro
+    networks: [proxy]
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.authelia.rule=Host(`auth.{{ lab_domain }}`)
+      - traefik.http.routers.authelia.entrypoints=websecure
+    # Healthcheck embarqué inutilisable : il lit /app/.healthcheck.env, écrit par
+    # Authelia au démarrage — impossible avec read_only. D'où disable_healthcheck
+    # côté config + ce healthcheck à nous.
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9091/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
   traefik:
     image: {{ traefik_image }}
     user: "65532:65532"
