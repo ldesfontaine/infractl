@@ -1,0 +1,13 @@
+# /srv/infra/public.yml — propriété de l'opérateur (jamais réécrit par le moteur).
+#
+# Tout ce que sert Traefik est derrière le SSO par défaut. Ce fichier est LA
+# liste exhaustive de ce qui y échappe. Une entrée = une exception ASSUMÉE :
+# `reason` est obligatoire — une exception se justifie ou se refuse.
+#
+# Exemple :
+# public:
+#   - host: status.{{ lab_domain }}          # FQDN sous {{ lab_domain }}
+#     reason: "page de statut publique"      # obligatoire, non vide
+#     paths: ["^/api/health$"]               # optionnel : regex de chemins ;
+#                                            # sans paths, tout l'hôte est public
+public: []

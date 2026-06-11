@@ -41,6 +41,32 @@
       authelia crypto hash generate argon2) puis crée le fichier —
       procédure complète : README, section Authelia.
 
+- name: Fichier d'exceptions publiques (créé vide au premier run, propriété opérateur)
+  ansible.builtin.template:
+    src: public.yml.j2
+    dest: "{{ infra_root }}/public.yml"
+    mode: "0644"
+    force: false
+
+- name: Charger les exceptions publiques
+  ansible.builtin.include_vars:
+    file: "{{ infra_root }}/public.yml"
+    name: authelia_public
+
+- name: Valider le contrat des exceptions (host sous le domaine, reason obligatoire)
+  ansible.builtin.assert:
+    that:
+      - item.host is defined
+      - item.host is match('^[a-z0-9-]+(\.[a-z0-9-]+)*\.' ~ (lab_domain | regex_escape) ~ '$')
+      - item.reason is defined
+      - (item.reason | trim | length) > 0
+    fail_msg: >-
+      /srv/infra/public.yml — entrée invalide : {{ item }}.
+      Règles : host = sous-domaine de {{ lab_domain }} ; reason obligatoire et
+      non vide. Une exception se justifie ou se refuse.
+    quiet: true
+  loop: "{{ authelia_public.public | default([], true) }}"
+
 - name: Configuration Authelia
   ansible.builtin.template:
     src: configuration.yml.j2

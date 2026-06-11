@@ -16,7 +16,17 @@ access_control:
     # Machinerie moteur : sans ce bypass, le portail boucle sur lui-même.
     - domain: "auth.{{ lab_domain }}"
       policy: bypass
-    # (brief 2B : les exceptions de /srv/infra/public.yml seront rendues ici)
+{% for exc in (authelia_public.public | default([], true)) %}
+    - domain: "{{ exc.host }}"
+      policy: bypass
+{% if exc.paths is defined and exc.paths %}
+      resources:    # regex de chemin : bypass limité aux chemins qui matchent,
+                    # le reste de l'hôte retombe sur default_policy (doc Authelia)
+{% for p in exc.paths %}
+        - "{{ p }}"
+{% endfor %}
+{% endif %}
+{% endfor %}
 
 session:
   cookies:
