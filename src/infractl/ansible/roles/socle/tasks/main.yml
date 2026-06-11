@@ -1,0 +1,8 @@
+---
+- name: Stack convergée
+  community.docker.docker_compose_v2:
+    project_src: "{{ infra_root }}"
+    files: "{{ traefik_compose_files }}"
+    state: present
+    remove_orphans: true
+    wait: true

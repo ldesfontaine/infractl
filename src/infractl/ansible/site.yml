@@ -10,3 +10,7 @@
       tags: [docker]
     - role: traefik
       tags: [traefik]
+    - role: authelia
+      tags: [authelia]
+    - role: socle
+      tags: [socle, traefik, authelia]
