@@ -27,7 +27,7 @@
     mode: "0400"
   loop: [jwt_secret, session_secret, storage_encryption_key]
 
-- name: users.yml présent ?
+- name: Fichier users.yml présent ?
   ansible.builtin.stat:
     path: "{{ infra_root }}/secrets/authelia/users.yml"
   register: authelia_users_file
