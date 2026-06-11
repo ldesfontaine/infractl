@@ -66,3 +66,9 @@
     dest: "{{ infra_root }}/traefik/traefik.yml"
     mode: "0644"
   notify: Restart traefik
+
+- name: Dashboard Traefik (dynamic/ rechargé à chaud, SSO hérité de l'entrypoint)
+  ansible.builtin.template:
+    src: dashboard.yml.j2
+    dest: "{{ infra_root }}/traefik/dynamic/dashboard.yml"
+    mode: "0644"

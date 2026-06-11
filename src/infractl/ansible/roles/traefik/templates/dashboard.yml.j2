@@ -1,0 +1,8 @@
+# Géré par infractl — dashboard Traefik.
+# Zéro middleware déclaré ici : le SSO est hérité de l'entrypoint (ADR 0008).
+http:
+  routers:
+    dashboard:
+      rule: Host(`traefik.{{ lab_domain }}`)
+      entryPoints: [websecure]
+      service: api@internal
