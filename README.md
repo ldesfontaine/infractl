@@ -5,9 +5,10 @@ local pour transformer une machine Debian en socle conteneurisé durci —
 Traefik seul publieur de ports, HTTPS wildcard (ACME DNS-01), services
 joignables uniquement à travers le reverse proxy.
 
-Projet en construction (Slice 2 : socle Traefik + SSO Authelia, public par
-exception, backends externes frontés via `routes.yml`). Les couches CrowdSec,
-WireGuard et secrets chiffrés (SOPS/age) arrivent dans les slices suivantes.
+Projet en construction (Slice 3 : socle Traefik + SSO Authelia, public par
+exception, backends externes frontés via `routes.yml`, CrowdSec en tête
+d'entrypoint). Restent WireGuard et les secrets chiffrés (SOPS/age), dans
+les slices suivantes.
 
 ## Principes
 
@@ -73,6 +74,63 @@ Les mails de réinitialisation de mot de passe atterrissent dans
 
 Caveat : toute modification de la config Authelia redémarre le service et
 déconnecte les sessions (stockées en mémoire en V1).
+
+## CrowdSec (bouncer en tête d'entrypoint)
+
+CrowdSec lit le journal d'accès JSON de Traefik et publie des décisions de
+ban ; le plugin bouncer les applique en tête de l'entrypoint `websecure` —
+`crowdsec@file` avant `authelia@file` : la réputation se juge avant
+l'identité ([ADR 0012](docs/adr/0012-crowdsec-bouncer-plugin.md)). Une IP
+bannie est rejetée `403` avant le portail SSO, y compris sur les routes en
+bypass. Fail-closed : LAPI injoignable = trafic bloqué (défauts du plugin,
+cohérents avec l'ADR 0008).
+
+Comportements constatés :
+
+- Propagation d'une décision en mode stream : ≤ 60 s (cycle de
+  rafraîchissement du plugin).
+- Après un deploy qui redémarre traefik puis crowdsec : ~30 s de LAPI
+  « connection refused » dans les logs traefik — transitoire, auto-résorbé
+  au cycle suivant.
+- CAPI/console désactivées par défaut (pas de partage de signaux hors du
+  lab) : `crowdsec_online_api`, surchargeable dans `/srv/infra/config.yml`.
+- Les parsers whitelistent les IP privées : pas d'auto-ban du LAN par les
+  scénarios ; les décisions manuelles s'appliquent quand même (preuve
+  ci-dessous).
+- `cscli bouncers list` affiche `1.5.0` pour le plugin `v1.6.0` : constante
+  upstream non bumpée. L'épingle réelle est `version:` dans
+  `/srv/infra/traefik/traefik.yml` et l'archive téléchargée dans
+  `traefik/plugins/archives/`.
+
+Cycle ban/unban complet (codes constatés). `--duration` est recommandé :
+l'auto-expiration borne une erreur, et SSH (port 22) passe hors Traefik —
+un ban ne coupe jamais l'accès d'administration. L'IP à bannir est celle
+que Traefik voit : champ `ClientHost` dans
+`/srv/infra/traefik/logs/access.log`.
+
+```bash
+# [machine cible] bannir une IP pour 10 minutes
+docker exec infra-crowdsec-1 cscli decisions add --ip <IP> --duration 10m --reason "test ban"
+```
+
+```bash
+# [laptop] ≤ 75 s plus tard (cycle stream 60 s) : rejet avant le portail, bypass compris
+curl -sk -o /dev/null -w '%{http_code}\n' https://auth.lab.<domaine>      # 403
+curl -sk -o /dev/null -w '%{http_code}\n' https://whoami.lab.<domaine>    # 403
+curl -sk -o /dev/null -w '%{http_code}\n' https://traefik.lab.<domaine>   # 403
+```
+
+```bash
+# [machine cible] lever le ban (sinon : auto-expiration à --duration)
+docker exec infra-crowdsec-1 cscli decisions delete --ip <IP>
+```
+
+```bash
+# [laptop] ≤ 75 s plus tard : retour à la baseline du socle
+curl -sk -o /dev/null -w '%{http_code} %{redirect_url}\n' https://whoami.lab.<domaine>   # 302 → auth.lab.<domaine>
+curl -sk -o /dev/null -w '%{http_code}\n' https://auth.lab.<domaine>                      # 200
+curl -sk -o /dev/null -w '%{http_code} %{redirect_url}\n' https://traefik.lab.<domaine>  # 302 → auth.lab.<domaine>
+```
 
 ## Public par exception
 
