@@ -24,7 +24,8 @@ WireGuard et secrets chiffrés (SOPS/age) arrivent dans les slices suivantes.
 ```bash
 apt-get update && apt-get install -y --no-install-recommends git pipx
 pipx install git+https://github.com/ldesfontaine/infractl.git
-export PATH="$PATH:/root/.local/bin"
+pipx ensurepath                       # persiste le PATH (sessions suivantes)
+export PATH="$PATH:/root/.local/bin"  # …et pour la session courante
 mkdir -p /srv/infra
 cat > /srv/infra/config.yml <<'EOF'                     # remplacer les deux valeurs
 domain: exemple.com
@@ -33,6 +34,9 @@ EOF
 read -rsp 'CF_DNS_API_TOKEN : ' CF_DNS_API_TOKEN; echo; export CF_DNS_API_TOKEN  # premier deploy uniquement
 infractl deploy
 ```
+
+`pipx ensurepath` écrit le PATH dans le profil du shell, effectif à la
+prochaine connexion ; l'`export` couvre la session en cours.
 
 `--no-install-recommends` est important : sans lui, pipx tire ~79 paquets
 (~202 Mo) superflus. Le token Cloudflare est saisi via `read -rsp` pour ne
