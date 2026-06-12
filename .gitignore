@@ -5,4 +5,3 @@ dist/
 build/
 *.egg-info/
 .ansible/
-[Bb]rief*.md
