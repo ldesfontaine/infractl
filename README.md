@@ -87,13 +87,57 @@ public:
 Procédure : éditer le fichier puis `infractl deploy`. Une entrée sans
 `reason` (ou hors domaine) fait échouer le déploiement — c'est voulu.
 
+Exemple complet du cycle, sur `whoami` (réellement déployé, donc les codes
+sont vérifiables) :
+
+```bash
+# Rendre whoami public le temps d'un test
+cat > /srv/infra/public.yml <<'EOF'
+public:
+  - host: whoami.lab.<domaine>
+    reason: "test du cycle public"
+EOF
+infractl deploy
+curl -sk -o /dev/null -w '%{http_code}\n' https://whoami.lab.<domaine>          # 200 (anonyme)
+
+# Retirer l'exception : tout repasse derrière le SSO
+cat > /srv/infra/public.yml <<'EOF'
+public: []
+EOF
+infractl deploy
+curl -sk -o /dev/null -w '%{http_code} %{redirect_url}\n' https://whoami.lab.<domaine>   # 302 → auth.lab.<domaine>
+
+# Chaque deploy de ce cycle redémarre Authelia : les sessions SSO sont
+# déconnectées (voir le caveat de la section « SSO (Authelia) »).
+```
+
 ## Vérifier le socle
+
+Ces vérifications se lancent depuis le laptop : c'est son `/etc/hosts` qui
+résout `*.lab.<domaine>` vers l'IP de la VM (le bloc « top départ » du drill
+réécrit cette ligne).
 
 ```bash
 curl -sk -o /dev/null -w '%{http_code} %{redirect_url}\n' https://whoami.lab.<domaine>   # 302 → auth.lab.<domaine>
 curl -sk -o /dev/null -w '%{http_code}\n' https://auth.lab.<domaine>                      # 200
 curl -sk -o /dev/null -w '%{http_code} %{redirect_url}\n' https://traefik.lab.<domaine>  # 302 → auth.lab.<domaine>
 ```
+
+Lancées depuis la VM, ou avec un `/etc/hosts` périmé, ces curl renvoient
+`000` : curl met `000` dans `%{http_code}` quand il n'obtient aucune réponse
+HTTP (nom non résolu, connexion refusée). C'est un faux négatif, pas un
+socle cassé.
+
+Alternative indépendante de `/etc/hosts` — forcer la résolution à la volée :
+
+```bash
+IP=<IP-de-la-VM>
+curl --resolve whoami.lab.<domaine>:443:$IP -sk -o /dev/null \
+  -w '%{http_code} %{redirect_url}\n' https://whoami.lab.<domaine>
+```
+
+(le port = `HTTPS_PORT` publié, 443 par défaut — vérifier dans
+`/srv/infra/.env` en cas de doute.)
 
 ## Commandes
 
