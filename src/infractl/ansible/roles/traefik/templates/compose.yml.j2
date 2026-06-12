@@ -50,11 +50,40 @@ services:
       - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
       - ./traefik/dynamic:/etc/traefik/dynamic:ro
       - ./traefik/acme:/acme
+      - ./traefik/logs:/var/log/traefik
+      - ./traefik/plugins:/plugins-storage
+      - ./secrets/crowdsec.key:/etc/traefik/crowdsec.key:ro
     env_file:
       - secrets/cloudflare.env
     extra_hosts:
       - host.docker.internal:host-gateway
     networks: [docker-api, proxy]
+    restart: unless-stopped
+
+  crowdsec:
+    image: {{ crowdsec_image }}
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    # read_only/user non-root : non supportés par l'image — l'entrypoint
+    # réécrit /etc/crowdsec/config.yaml à chaque démarrage et l'init copie
+    # des fichiers 0600 root (issue crowdsec#3303). Écart documenté (3-B).
+    environment:
+      COLLECTIONS: "{{ crowdsec_collections | join(' ') }}"
+{% if not crowdsec_online_api %}
+      DISABLE_ONLINE_API: "true"
+{% endif %}
+    env_file:
+      - secrets/crowdsec.env
+    volumes:
+      - ./crowdsec/config:/etc/crowdsec
+      - ./crowdsec/data:/var/lib/crowdsec/data
+      - ./traefik/logs:/var/log/traefik:ro
+    networks: [proxy]
+    healthcheck:
+      test: ["CMD", "cscli", "lapi", "status"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
     restart: unless-stopped
 
 networks:
