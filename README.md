@@ -95,25 +95,35 @@ Exemple complet du cycle, sur `whoami` (réellement déployé, donc les codes
 sont vérifiables) :
 
 ```bash
-# Rendre whoami public le temps d'un test
+# [machine cible] rendre whoami public le temps d'un test
 cat > /srv/infra/public.yml <<'EOF'
 public:
   - host: whoami.lab.<domaine>
     reason: "test du cycle public"
 EOF
 infractl deploy
-curl -sk -o /dev/null -w '%{http_code}\n' https://whoami.lab.<domaine>          # 200 (anonyme)
+```
 
-# Retirer l'exception : tout repasse derrière le SSO
+```bash
+# [laptop] anonyme : servi directement, sans SSO
+curl -sk -o /dev/null -w '%{http_code}\n' https://whoami.lab.<domaine>          # 200 (anonyme)
+```
+
+```bash
+# [machine cible] retirer l'exception : tout repasse derrière le SSO
 cat > /srv/infra/public.yml <<'EOF'
 public: []
 EOF
 infractl deploy
-curl -sk -o /dev/null -w '%{http_code} %{redirect_url}\n' https://whoami.lab.<domaine>   # 302 → auth.lab.<domaine>
-
-# Chaque deploy de ce cycle redémarre Authelia : les sessions SSO sont
-# déconnectées (voir le caveat de la section « SSO (Authelia) »).
 ```
+
+```bash
+# [laptop] anonyme : redirigé vers le portail SSO
+curl -sk -o /dev/null -w '%{http_code} %{redirect_url}\n' https://whoami.lab.<domaine>   # 302 → auth.lab.<domaine>
+```
+
+Chaque deploy de ce cycle redémarre Authelia : les sessions SSO sont
+déconnectées (voir le caveat de la section « SSO (Authelia) »).
 
 ## Backends externes (routes.yml)
 
@@ -188,6 +198,7 @@ résout `*.lab.<domaine>` vers l'IP de la VM (le bloc « top départ » du drill
 réécrit cette ligne).
 
 ```bash
+# [laptop] les trois réponses attendues du socle
 curl -sk -o /dev/null -w '%{http_code} %{redirect_url}\n' https://whoami.lab.<domaine>   # 302 → auth.lab.<domaine>
 curl -sk -o /dev/null -w '%{http_code}\n' https://auth.lab.<domaine>                      # 200
 curl -sk -o /dev/null -w '%{http_code} %{redirect_url}\n' https://traefik.lab.<domaine>  # 302 → auth.lab.<domaine>
@@ -201,6 +212,7 @@ socle cassé.
 Alternative indépendante de `/etc/hosts` — forcer la résolution à la volée :
 
 ```bash
+# [laptop] forcer la résolution, sans dépendre de /etc/hosts
 IP=<IP-de-la-VM>
 curl --resolve whoami.lab.<domaine>:443:$IP -sk -o /dev/null \
   -w '%{http_code} %{redirect_url}\n' https://whoami.lab.<domaine>
