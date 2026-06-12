@@ -14,7 +14,8 @@ vit sur la machine cible et n'entre JAMAIS dans ce dépôt.
 
 ## Conventions
 - Idempotence obligatoire : un 2ᵉ run doit donner changed=0
-  (vérifié sur la VM jetable, par l'humain — jamais ici).
+  (vérifié sur la VM jetable — par l'humain, ou par Claude Code via SSH
+  quand l'IP est fournie ; JAMAIS sur cette machine).
 - Convention produit : aucun service ne déclare `ports:` sauf traefik.
 - Images Docker épinglées (jamais latest) ; toute MAJ de version = ADR 0005 mis à jour.
 - Toute décision structurante = un ADR dans docs/adr/.
