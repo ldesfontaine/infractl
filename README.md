@@ -6,8 +6,8 @@ Traefik seul publieur de ports, HTTPS wildcard (ACME DNS-01), services
 joignables uniquement à travers le reverse proxy.
 
 Projet en construction (Slice 2 : socle Traefik + SSO Authelia, public par
-exception). Les couches CrowdSec, WireGuard et secrets chiffrés (SOPS/age)
-arrivent dans les slices suivantes.
+exception, backends externes frontés via `routes.yml`). Les couches CrowdSec,
+WireGuard et secrets chiffrés (SOPS/age) arrivent dans les slices suivantes.
 
 ## Principes
 
@@ -110,6 +110,72 @@ curl -sk -o /dev/null -w '%{http_code} %{redirect_url}\n' https://whoami.lab.<do
 # Chaque deploy de ce cycle redémarre Authelia : les sessions SSO sont
 # déconnectées (voir le caveat de la section « SSO (Authelia) »).
 ```
+
+## Backends externes (routes.yml)
+
+Traefik ne découvre que les conteneurs ; `/srv/infra/routes.yml` déclare les
+backends hors Docker (binaire sur l'hôte, machine distante) à fronter.
+Chaque entrée crée un router TLS sur l'entrypoint `websecure` : le SSO est
+hérité de l'entrypoint, aucun changement côté Authelia
+([ADR 0011](docs/adr/0011-routes-backends-externes.md)). C'est le frère de
+`public.yml` : une route se justifie (`reason`) ou se refuse.
+
+```yaml
+routes:
+  - host: legacy.lab.<domaine>                  # FQDN sous lab.<domaine>
+    backend: "http://host.docker.internal:8000" # URL http(s):// ;
+                                                # host.docker.internal = l'hôte vu du conteneur
+    reason: "service hôte non-Docker, fronté sans migration"  # obligatoire, non vide
+```
+
+Procédure : éditer le fichier puis `infractl deploy`. La route est rechargée
+**à chaud** (aucun redémarrage de Traefik — contrairement à `public.yml`,
+qui redémarre Authelia). Une entrée invalide — `reason` vide, hôte hors
+domaine, hôte réservé (`auth`, `traefik`, `whoami`), doublon — fait échouer
+le déploiement AVANT tout rendu : le dernier état valide reste servi.
+
+Exemple complet du cycle, sur un serveur de fichiers minimal (chaque bloc
+précise où il se lance) :
+
+```bash
+# [machine cible] lancer le backend de démonstration, puis le fronter
+nohup python3 -m http.server 8000 >/tmp/http8000.log 2>&1 &
+cat > /srv/infra/routes.yml <<'EOF'
+routes:
+  - host: legacy.lab.<domaine>
+    backend: "http://host.docker.internal:8000"
+    reason: "service hôte non-Docker, fronté sans migration"
+EOF
+infractl deploy
+```
+
+```bash
+# [laptop] anonyme : redirigé vers le portail SSO.
+# Au navigateur, après login : le listing du serveur de fichiers.
+curl -sk -o /dev/null -w '%{http_code} %{redirect_url}\n' https://legacy.lab.<domaine>   # 302 → auth.lab.<domaine>
+```
+
+```bash
+# [machine cible] retirer la route
+cat > /srv/infra/routes.yml <<'EOF'
+routes: []
+EOF
+infractl deploy
+```
+
+```bash
+# [laptop] plus aucun router ne matche l'hôte : Traefik répond lui-même 404
+curl -sk -o /dev/null -w '%{http_code}\n' https://legacy.lab.<domaine>   # 404
+```
+
+Limites :
+
+- **Pas de healthcheck des backends externes** : Traefik ne supervise pas
+  leur santé ; backend éteint = `502` au runtime, le deploy n'en sait rien.
+- La démo écoute sur `0.0.0.0` (toutes les interfaces de la machine) —
+  hypothèse de lab ; en usage réel, binder le backend sur l'IP que
+  `host.docker.internal` résout dans le conteneur (constat :
+  `docker inspect`), rien d'autre.
 
 ## Vérifier le socle
 
