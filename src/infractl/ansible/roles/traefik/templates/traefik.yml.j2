@@ -1,6 +1,12 @@
 api:
   dashboard: true
 
+experimental:
+  plugins:
+    bouncer:
+      moduleName: github.com/maxlerebourg/crowdsec-bouncer-traefik-plugin
+      version: "{{ traefik_crowdsec_plugin_version }}"
+
 providers:
   docker:
     endpoint: "tcp://socket-proxy:2375"
@@ -19,7 +25,8 @@ entryPoints:
     address: ":8443"
     http:
       middlewares:
-        # Ordre significatif. Slice 3 préfixera crowdsec@file ICI, avant authelia.
+        # Ordre significatif : réputation avant identité.
+        - crowdsec@file
         - authelia@file
       tls:
         certResolver: le
@@ -39,3 +46,7 @@ certificatesResolvers:
 
 log:
   level: INFO
+
+accessLog:
+  filePath: /var/log/traefik/access.log
+  format: json

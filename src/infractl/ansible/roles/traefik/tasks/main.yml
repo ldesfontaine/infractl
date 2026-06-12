@@ -26,6 +26,14 @@
     - path: traefik/acme
       mode: "0700"
       owner: "65532"
+    # Traefik est read_only : le plugin se télécharge dans /plugins-storage
+    # au démarrage, l'accessLog s'écrit dans /var/log/traefik.
+    - path: traefik/logs
+      mode: "0755"
+      owner: "65532"
+    - path: traefik/plugins
+      mode: "0755"
+      owner: "65532"
 
 - name: Secret Cloudflare déjà posé ?
   ansible.builtin.stat:
@@ -47,7 +55,7 @@
   when: not traefik_cf_secret.stat.exists
   no_log: true
 
-- name: Fichiers d'état (compose, env, apps)
+- name: Fichiers d'état (env, apps)
   ansible.builtin.template:
     src: "{{ item.src }}"
     dest: "{{ infra_root }}/{{ item.dest }}"
@@ -55,10 +63,17 @@
   loop:
     - src: env.j2
       dest: .env
-    - src: compose.yml.j2
-      dest: compose.yml
     - src: whoami.yml.j2
       dest: apps/whoami.yml
+
+# Le converge (socle) recrée les services dont la définition change ; le
+# restart couvre ce que compose ne voit pas (fichiers montés du conteneur).
+- name: Compose du socle
+  ansible.builtin.template:
+    src: compose.yml.j2
+    dest: "{{ infra_root }}/compose.yml"
+    mode: "0644"
+  notify: Restart crowdsec
 
 - name: Fichier des routes externes (créé vide au premier run, propriété opérateur)
   ansible.builtin.template:

@@ -9,6 +9,7 @@ traefik_acme_ca_server: "https://acme-staging-v02.api.letsencrypt.org/directory"
 traefik_image: "traefik:v3.7.4"
 traefik_socket_proxy_image: "tecnativa/docker-socket-proxy:v0.4.2"
 traefik_whoami_image: "traefik/whoami:v1.11.0"
+traefik_crowdsec_plugin_version: "v1.6.0"
 
 traefik_compose_files:
   - compose.yml
