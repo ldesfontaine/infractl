@@ -52,6 +52,8 @@ services:
       - ./traefik/acme:/acme
     env_file:
       - secrets/cloudflare.env
+    extra_hosts:
+      - host.docker.internal:host-gateway
     networks: [docker-api, proxy]
     restart: unless-stopped
 
