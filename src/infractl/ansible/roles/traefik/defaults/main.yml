@@ -13,3 +13,8 @@ traefik_whoami_image: "traefik/whoami:v1.11.0"
 traefik_compose_files:
   - compose.yml
   - apps/whoami.yml
+
+# Hôtes gérés par le moteur : interdits dans routes.yml (les déclarer
+# écraserait un router du socle ; avec le fail-closed de l'ADR 0008,
+# écraser auth.* = verrouillage total).
+traefik_reserved_hosts: [auth, traefik, whoami]

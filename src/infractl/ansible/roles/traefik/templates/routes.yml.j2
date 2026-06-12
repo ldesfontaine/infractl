@@ -1,0 +1,13 @@
+# /srv/infra/routes.yml — propriété de l'opérateur (jamais réécrit par le moteur).
+#
+# Backends EXTERNES à Docker (binaire sur l'hôte, machine distante…) que
+# Traefik doit fronter. Chaque entrée crée un router TLS sur websecure :
+# le SSO est hérité de l'entrypoint (ADR 0008) — rien à déclarer ici.
+# `reason` est obligatoire : une route se justifie ou se refuse.
+#
+# Exemple :
+# routes:
+#   - host: legacy.{{ lab_domain }}                  # FQDN sous {{ lab_domain }}
+#     backend: "http://host.docker.internal:8000"    # URL http(s)://
+#     reason: "service hôte non-Docker, fronté sans migration"
+routes: []

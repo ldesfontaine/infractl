@@ -60,6 +60,65 @@
     - src: whoami.yml.j2
       dest: apps/whoami.yml
 
+- name: Fichier des routes externes (créé vide au premier run, propriété opérateur)
+  ansible.builtin.template:
+    src: routes.yml.j2
+    dest: "{{ infra_root }}/routes.yml"
+    mode: "0644"
+    force: false
+
+- name: Charger les routes externes
+  ansible.builtin.include_vars:
+    file: "{{ infra_root }}/routes.yml"
+    name: traefik_routes
+
+- name: Valider le contrat des routes (host sous le domaine et non réservé, backend URL, reason)
+  ansible.builtin.assert:
+    that:
+      - item.host is defined
+      - item.host is match('^[a-z0-9-]+(\.[a-z0-9-]+)*\.' ~ (lab_domain | regex_escape) ~ '$')
+      - item.host not in (traefik_reserved_hosts | map('regex_replace', '$', '.' ~ lab_domain) | list)
+      - item.backend is defined
+      - item.backend is match('^https?://')
+      - item.reason is defined
+      - (item.reason | trim | length) > 0
+    fail_msg: >-
+      /srv/infra/routes.yml — entrée invalide : {{ item }}.
+      Règles : host = sous-domaine de {{ lab_domain }}, hors hôtes réservés
+      ({{ traefik_reserved_hosts | join(', ') }} — les déclarer écraserait un
+      router du socle, et écraser auth.* = verrouillage total, ADR 0008
+      fail-closed) ; backend = URL http(s):// ; reason obligatoire et non
+      vide. Une route se justifie ou se refuse.
+    quiet: true
+  loop: "{{ traefik_routes.routes | default([], true) }}"
+
+- name: Refuser deux routes pour le même hôte
+  ansible.builtin.assert:
+    that: traefik_route_hosts | length == traefik_route_hosts | unique | length
+    fail_msg: >-
+      /srv/infra/routes.yml — hôte déclaré plusieurs fois :
+      {{ traefik_route_hosts | join(', ') }}.
+      Deux entrées pour le même hôte = deux routers en conflit sur la même
+      règle Host(). Une seule entrée par hôte.
+    quiet: true
+  vars:
+    traefik_route_hosts: "{{ traefik_routes.routes | default([], true) | map(attribute='host') | list }}"
+
+- name: Routes externes (dynamic/ rechargé à chaud, SSO hérité de l'entrypoint)
+  ansible.builtin.template:
+    src: routes-dynamic.yml.j2
+    dest: "{{ infra_root }}/traefik/dynamic/routes.yml"
+    mode: "0644"
+  when: (traefik_routes.routes | default([], true)) | length > 0
+
+# Jamais de fichier dynamic vide ou réduit à des commentaires : le
+# comportement de Traefik sur fichier vide n'est pas garanti.
+- name: Retirer le rendu quand aucune route n'est déclarée
+  ansible.builtin.file:
+    path: "{{ infra_root }}/traefik/dynamic/routes.yml"
+    state: absent
+  when: (traefik_routes.routes | default([], true)) | length == 0
+
 - name: Configuration statique Traefik
   ansible.builtin.template:
     src: traefik.yml.j2

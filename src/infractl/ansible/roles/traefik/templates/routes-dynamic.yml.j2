@@ -1,0 +1,17 @@
+# Géré par infractl — backends externes déclarés dans /srv/infra/routes.yml.
+# Zéro middleware déclaré : SSO hérité de l'entrypoint (ADR 0008).
+http:
+  routers:
+{% for r in traefik_routes.routes %}
+    {{ r.host | replace('.', '-') }}:
+      rule: Host(`{{ r.host }}`)
+      entryPoints: [websecure]
+      service: {{ r.host | replace('.', '-') }}
+{% endfor %}
+  services:
+{% for r in traefik_routes.routes %}
+    {{ r.host | replace('.', '-') }}:
+      loadBalancer:
+        servers:
+          - url: "{{ r.backend }}"
+{% endfor %}
