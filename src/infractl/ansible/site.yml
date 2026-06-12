@@ -10,7 +10,9 @@
       tags: [docker]
     - role: traefik
       tags: [traefik]
+    - role: crowdsec
+      tags: [crowdsec]
     - role: authelia
       tags: [authelia]
     - role: socle
-      tags: [socle, traefik, authelia]
+      tags: [socle, traefik, crowdsec, authelia]

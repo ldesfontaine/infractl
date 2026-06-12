@@ -1,0 +1,13 @@
+# Géré par infractl — bouncer CrowdSec appliqué à l'entrypoint websecure
+http:
+  middlewares:
+    crowdsec:
+      plugin:
+        bouncer:
+          # Défaut du plugin : false — sans cette ligne, middleware no-op.
+          enabled: true
+          crowdsecMode: stream
+          crowdsecLapiScheme: http
+          crowdsecLapiHost: crowdsec:8080
+          crowdsecLapiKeyFile: /etc/traefik/crowdsec.key
+          updateIntervalSeconds: 60

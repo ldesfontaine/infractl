@@ -1,0 +1,7 @@
+---
+- name: Restart crowdsec
+  community.docker.docker_compose_v2:
+    project_src: "{{ infra_root }}"
+    files: "{{ traefik_compose_files }}"
+    state: restarted
+    services: [crowdsec]

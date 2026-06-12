@@ -1,0 +1,66 @@
+---
+- name: Arborescence CrowdSec
+  ansible.builtin.file:
+    path: "{{ infra_root }}/{{ item.path }}"
+    state: directory
+    mode: "{{ item.mode }}"
+  loop:
+    # L'image tourne en root (pas de USER au Dockerfile) : propriété root.
+    - path: crowdsec
+      mode: "0755"
+    - path: crowdsec/config
+      mode: "0755"
+    - path: crowdsec/config/acquis.d
+      mode: "0755"
+    - path: crowdsec/data
+      mode: "0755"
+
+- name: Secret machine CrowdSec déjà posé ?
+  ansible.builtin.stat:
+    path: "{{ infra_root }}/secrets/crowdsec.env"
+  register: crowdsec_secret
+
+- name: Écrire la clé bouncer (générée au premier run, jamais réécrite)
+  ansible.builtin.copy:
+    content: "BOUNCER_KEY_traefik={{ lookup('pipe', 'openssl rand -hex 32') }}\n"
+    dest: "{{ infra_root }}/secrets/crowdsec.env"
+    mode: "0600"
+    force: false
+  when: not crowdsec_secret.stat.exists
+  no_log: true
+
+- name: Lire la clé bouncer
+  ansible.builtin.slurp:
+    src: "{{ infra_root }}/secrets/crowdsec.env"
+  register: crowdsec_env_raw
+  no_log: true
+
+- name: Extraire la clé bouncer
+  ansible.builtin.set_fact:
+    crowdsec_bouncer_key: >-
+      {{ (crowdsec_env_raw.content | b64decode
+          | regex_search('BOUNCER_KEY_traefik=(.+)', '\1') | first | trim) }}
+  no_log: true
+
+# Le plugin lit la clé via crowdsecLapiKeyFile : elle ne figure jamais dans
+# la conf dynamique. Seul l'uid de Traefik peut la lire.
+- name: Clé LAPI exposée à Traefik (fichier, jamais en clair dans la conf)
+  ansible.builtin.copy:
+    content: "{{ crowdsec_bouncer_key }}\n"
+    dest: "{{ infra_root }}/secrets/crowdsec.key"
+    owner: "65532"
+    mode: "0400"
+  no_log: true
+
+- name: Middleware bouncer (rechargé à chaud par Traefik, ADR 0004)
+  ansible.builtin.template:
+    src: crowdsec.yml.j2
+    dest: "{{ infra_root }}/traefik/dynamic/crowdsec.yml"
+    mode: "0644"
+
+- name: Acquisition des logs Traefik (un fichier par source, acquis.d/)
+  ansible.builtin.template:
+    src: acquis-traefik.yaml.j2
+    dest: "{{ infra_root }}/crowdsec/config/acquis.d/traefik.yaml"
+    mode: "0644"
+  notify: Restart crowdsec

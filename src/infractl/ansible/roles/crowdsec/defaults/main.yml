@@ -1,0 +1,10 @@
+---
+# 1.7.8 corrige un bypass WAF et un DoS LAPI (ADR 0005).
+crowdsec_image: "crowdsecurity/crowdsec:v1.7.8"
+
+# Installées par l'entrypoint de l'image au premier démarrage (var COLLECTIONS).
+crowdsec_collections: [crowdsecurity/traefik]
+
+# CAPI/console désactivées par défaut : pas de partage de signaux hors du lab.
+# Surchargeable dans /srv/infra/config.yml.
+crowdsec_online_api: false
