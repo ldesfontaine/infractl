@@ -66,14 +66,11 @@
     - src: whoami.yml.j2
       dest: apps/whoami.yml
 
-# Le converge (socle) recrée les services dont la définition change ; le
-# restart couvre ce que compose ne voit pas (fichiers montés du conteneur).
 - name: Compose du socle
   ansible.builtin.template:
     src: compose.yml.j2
     dest: "{{ infra_root }}/compose.yml"
     mode: "0644"
-  notify: Restart crowdsec
 
 - name: Fichier des routes externes (créé vide au premier run, propriété opérateur)
   ansible.builtin.template:
